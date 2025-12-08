@@ -45,7 +45,37 @@ function injectSwipeDetection() {
           
           // Check if it's a valid swipe (horizontal or vertical)
           if (Math.abs(deltaX) > minSwipeDistance || Math.abs(deltaY) > minSwipeDistance) {
-            console.log("hey :)");
+            try {
+              // Log the page URL
+              console.log(window.location.href);
+              
+              const activeSlideImg = document.querySelector(".swiper-slide-active img");
+              if (activeSlideImg && activeSlideImg.src) {
+                const encoded = activeSlideImg.src;
+                
+                // First decode the full Taboola URL
+                const decodedOnce = decodeURI(encoded);
+                
+                // Extract the original encoded image URL
+                const parts = decodedOnce.split("/https");
+                if (parts.length > 1) {
+                  const originalEncodedUrl = "https" + parts[1];
+                  
+                  // Decode the original image URL
+                  const originalUrl = decodeURIComponent(originalEncodedUrl);
+                  
+                  console.log(originalUrl);
+                  console.log(encoded);
+                } else {
+                  console.log("Could not extract original URL from:", encoded);
+                }
+              } else {
+                console.log("No active slide image found");
+              }
+            } catch (error) {
+              console.error("Error processing image URL:", error);
+            }
+            
             touchStartX = null;
             touchStartY = null;
             touchEndX = null;
