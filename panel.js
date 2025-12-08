@@ -1,11 +1,60 @@
-// This script runs in the DevTools panel context
-console.log("ImgAudit panel script loaded!");
+// ============================================================================
+// CONFIGURATION & CONSTANTS
+// ============================================================================
 
-const STORAGE_KEY = 'imgAuditLogs';
-let lastLogIndex = 0;
+const CONFIG = {
+  STORAGE_KEY: 'imgAuditLogs',
+  POLL_INTERVAL: 500, // milliseconds
+  MIN_SWIPE_DISTANCE: 50, // pixels
+  API_BASE_URL: 'http://content-enricher.taboolasyndication.com:8400',
+  API_ENDPOINTS: {
+    QUALITY: '/api/images/analyze-quality',
+    METRICS: '/api/images/metrics'
+  },
+  SELECTORS: {
+    SWIPER: '[data-testid="swiper"]',
+    ACTIVE_SLIDE_IMG: '.swiper-slide-active img'
+  },
+  ERROR_MESSAGES: {
+    NO_EXTRACT: 'Could not extract original URL',
+    NO_SLIDE: 'No active slide image found',
+    NO_VALID_URL: 'No valid image URL to analyze',
+    NO_LOGS: 'No logs to export'
+  },
+  CSV: {
+    DECIMAL_PRECISION: 6,
+    DATE_FORMAT: 'YYYY-MM-DD'
+  }
+};
+
+const API_RESULT_FIELDS = {
+  QUALITY: ['Thumbnail', 'Full Screen', 'Story'],
+  METRICS: ['Width', 'Height', 'Laplacian Variance', 'Total Pixels']
+};
+
+const CSV_HEADERS = [
+  'Timestamp',
+  'Page URL',
+  'Original Image URL',
+  'Encoded Image URL',
+  'QA Approved',
+  ...API_RESULT_FIELDS.QUALITY,
+  ...API_RESULT_FIELDS.METRICS
+];
+
+// ============================================================================
+// DOM ELEMENTS
+// ============================================================================
+
 const logsContainer = document.getElementById('logsContainer');
 const clearBtn = document.getElementById('clearBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+
+// ============================================================================
+// STATE
+// ============================================================================
+
+let lastLogIndex = 0;
 
 // Log when the panel is opened
 window.addEventListener('load', function() {
@@ -31,9 +80,13 @@ window.addEventListener('load', function() {
   });
 });
 
+// ============================================================================
+// STORAGE UTILITIES
+// ============================================================================
+
 function getStoredLogs() {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
   } catch (e) {
     console.error('Error reading from localStorage:', e);
@@ -42,8 +95,13 @@ function getStoredLogs() {
 }
 
 function saveLogsToStorage(logs) {
+  if (!Array.isArray(logs)) {
+    console.error('Invalid logs data: expected array');
+    return;
+  }
+  
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(logs));
   } catch (e) {
     console.error('Error saving to localStorage:', e);
   }
@@ -71,35 +129,42 @@ function clearLogs() {
   lastLogIndex = 0;
   
   // Clear localStorage
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(CONFIG.STORAGE_KEY);
   
   // Clear logs from the inspected page as well
   chrome.devtools.inspectedWindow.eval('if (window.__imgAuditLogs) { window.__imgAuditLogs = []; }');
 }
 
+// ============================================================================
+// API RESULTS UTILITIES
+// ============================================================================
+
 function getDefaultApiResults() {
-  return {
-    'Thumbnail': 'N/A',
-    'Full Screen': 'N/A',
-    'Story': 'N/A',
-    'Width': 'N/A',
-    'Height': 'N/A',
-    'Laplacian Variance': 'N/A',
-    'Total Pixels': 'N/A'
-  };
+  const results = {};
+  API_RESULT_FIELDS.QUALITY.forEach(field => {
+    results[field] = 'N/A';
+  });
+  API_RESULT_FIELDS.METRICS.forEach(field => {
+    results[field] = 'N/A';
+  });
+  return results;
 }
+
+// ============================================================================
+// LOG ENTRY MANAGEMENT
+// ============================================================================
 
 function addLogEntry(logData, saveToStorage = true) {
   // Generate unique ID for this log entry
-  const logId = logData.id || Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+  const logId = logData.id || generateLogId();
   
   // Create complete log entry data
   const completeLogData = {
     id: logId,
     timestamp: logData.timestamp || new Date().toISOString(),
-    pageUrl: logData.pageUrl,
-    originalUrl: logData.originalUrl,
-    encoded: logData.encoded,
+    pageUrl: logData.pageUrl || '',
+    originalUrl: logData.originalUrl || '',
+    encoded: logData.encoded || '',
     apiResults: logData.apiResults || getDefaultApiResults(),
     qaApproved: logData.qaApproved || false
   };
@@ -125,8 +190,7 @@ function renderLogEntry(logData, saveToStorage = false) {
   logEntry.className = 'log-entry';
   logEntry.dataset.logId = logData.id;
   
-  const date = new Date(logData.timestamp);
-  const timestamp = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  const timestamp = formatTimestamp(logData.timestamp);
   
   // Check if API results already exist and are loaded
   const hasApiResults = logData.apiResults && logData.apiResults !== null;
@@ -162,17 +226,17 @@ function renderLogEntry(logData, saveToStorage = false) {
   }
   
   // Make API calls if we have a valid original URL and results are still default (N/A)
-  // Check if apiResults is an object and has default N/A values
   const hasDefaultResults = logData.apiResults && 
     typeof logData.apiResults === 'object' &&
-    (logData.apiResults['Thumbnail'] === 'N/A' || logData.apiResults['Width'] === 'N/A');
+    (logData.apiResults[API_RESULT_FIELDS.QUALITY[0]] === 'N/A' || 
+     logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A');
   
-  if (hasDefaultResults && logData.originalUrl && logData.originalUrl !== "Could not extract original URL" && logData.originalUrl !== "No active slide image found" && !logData.originalUrl.startsWith("Error:")) {
+  if (hasDefaultResults && isValidImageUrl(logData.originalUrl)) {
     fetchApiResults(logData.originalUrl, `api-results-${logData.id}`, logData.id);
   } else if (hasDefaultResults) {
     const resultsDiv = document.getElementById(`api-results-${logData.id}`);
     if (resultsDiv) {
-      resultsDiv.innerHTML = '<span style="color: #999;">No valid image URL to analyze</span>';
+      resultsDiv.innerHTML = `<span style="color: #999;">${CONFIG.ERROR_MESSAGES.NO_VALID_URL}</span>`;
     }
   }
 }
@@ -184,6 +248,17 @@ function updateQaStatus(logId, qaApproved) {
     storedLogs[logIndex].qaApproved = qaApproved;
     saveLogsToStorage(storedLogs);
   }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function escapeCsvField(field) {
@@ -198,39 +273,89 @@ function escapeCsvField(field) {
   return str;
 }
 
+function formatTimestamp(timestamp) {
+  const date = new Date(timestamp);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+}
+
+function generateLogId() {
+  return Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+function isValidImageUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return url !== CONFIG.ERROR_MESSAGES.NO_EXTRACT && 
+         url !== CONFIG.ERROR_MESSAGES.NO_SLIDE && 
+         !url.startsWith('Error:');
+}
+
+// ============================================================================
+// URL DECODING UTILITIES
+// ============================================================================
+
+/**
+ * Decodes a Taboola-encoded image URL
+ * @param {string} encodedUrl - The encoded image URL
+ * @returns {Object} - Object with originalUrl and error message if any
+ */
+function decodeTaboolaImageUrl(encodedUrl) {
+  if (!encodedUrl || typeof encodedUrl !== 'string') {
+    return {
+      originalUrl: CONFIG.ERROR_MESSAGES.NO_EXTRACT,
+      encoded: encodedUrl || ''
+    };
+  }
+  
+  try {
+    // First decode the full Taboola URL
+    const decodedOnce = decodeURI(encodedUrl);
+    
+    // Extract the original encoded image URL
+    const parts = decodedOnce.split('/https');
+    if (parts.length > 1) {
+      const originalEncodedUrl = 'https' + parts[1];
+      
+      // Decode the original image URL
+      const originalUrl = decodeURIComponent(originalEncodedUrl);
+      
+      return {
+        originalUrl: originalUrl,
+        encoded: encodedUrl
+      };
+    } else {
+      return {
+        originalUrl: CONFIG.ERROR_MESSAGES.NO_EXTRACT,
+        encoded: encodedUrl
+      };
+    }
+  } catch (error) {
+    return {
+      originalUrl: `Error: ${error.message}`,
+      encoded: encodedUrl
+    };
+  }
+}
+
+// ============================================================================
+// CSV EXPORT
+// ============================================================================
+
 function exportToCSV() {
   const storedLogs = getStoredLogs();
   
   if (storedLogs.length === 0) {
-    alert('No logs to export');
+    alert(CONFIG.ERROR_MESSAGES.NO_LOGS);
     return;
   }
   
-  // CSV Headers
-  const headers = [
-    'Timestamp',
-    'Page URL',
-    'Original Image URL',
-    'Encoded Image URL',
-    'QA Approved',
-    'Thumbnail',
-    'Full Screen',
-    'Story',
-    'Width',
-    'Height',
-    'Laplacian Variance',
-    'Total Pixels'
-  ];
-  
   // Build CSV rows
-  const rows = [headers.map(escapeCsvField).join(',')];
+  const rows = [CSV_HEADERS.map(escapeCsvField).join(',')];
   
   // Collect Story values from QA-approved logs for average calculation
   const qaApprovedStoryValues = [];
   
   storedLogs.forEach(function(log) {
-    const date = new Date(log.timestamp);
-    const timestamp = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    const timestamp = formatTimestamp(log.timestamp);
     
     // Get API results (handle both object and old HTML string format)
     let apiResults = log.apiResults || {};
@@ -271,7 +396,7 @@ function exportToCSV() {
   let storyAverage = 'N/A';
   if (qaApprovedStoryValues.length > 0) {
     const sum = qaApprovedStoryValues.reduce((a, b) => a + b, 0);
-    storyAverage = (sum / qaApprovedStoryValues.length).toFixed(6);
+    storyAverage = (sum / qaApprovedStoryValues.length).toFixed(CONFIG.CSV.DECIMAL_PRECISION);
   }
   
   // Add summary row at the bottom
@@ -374,8 +499,8 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
   try {
     // Call both APIs
     const [qualityResponse, metricsResponse] = await Promise.all([
-      fetch(`http://content-enricher.taboolasyndication.com:8400/api/images/analyze-quality?url=${encodedUrl}`),
-      fetch(`http://content-enricher.taboolasyndication.com:8400/api/images/metrics?url=${encodedUrl}`)
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.QUALITY}?url=${encodedUrl}`),
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.METRICS}?url=${encodedUrl}`)
     ]);
     
     // Parse quality response
@@ -383,9 +508,10 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
       const qualityXml = await qualityResponse.text();
       const qualityDoc = parseXml(qualityXml);
       
-      apiResults['Thumbnail'] = getXmlValue(qualityDoc, 'thumbnail');
-      apiResults['Full Screen'] = getXmlValue(qualityDoc, 'full_screen');
-      apiResults['Story'] = getXmlValue(qualityDoc, 'story');
+      API_RESULT_FIELDS.QUALITY.forEach((field, index) => {
+        const xmlTag = index === 0 ? 'thumbnail' : index === 1 ? 'full_screen' : 'story';
+        apiResults[field] = getXmlValue(qualityDoc, xmlTag);
+      });
     } else {
       apiResults['Thumbnail'] = `Error: ${qualityResponse.status}`;
       apiResults['Full Screen'] = `Error: ${qualityResponse.status}`;
@@ -397,10 +523,10 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
       const metricsXml = await metricsResponse.text();
       const metricsDoc = parseXml(metricsXml);
       
-      apiResults['Width'] = getXmlValue(metricsDoc, 'width');
-      apiResults['Height'] = getXmlValue(metricsDoc, 'height');
-      apiResults['Laplacian Variance'] = getXmlValue(metricsDoc, 'laplacianVariance');
-      apiResults['Total Pixels'] = getXmlValue(metricsDoc, 'totalPixels');
+      const metricsTags = ['width', 'height', 'laplacianVariance', 'totalPixels'];
+      API_RESULT_FIELDS.METRICS.forEach((field, index) => {
+        apiResults[field] = getXmlValue(metricsDoc, metricsTags[index]);
+      });
     } else {
       apiResults['Width'] = `Error: ${metricsResponse.status}`;
       apiResults['Height'] = `Error: ${metricsResponse.status}`;
@@ -447,14 +573,12 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
   }
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+
+// ============================================================================
+// POLLING & LOG DETECTION
+// ============================================================================
 
 function pollForLogs() {
-  // Check for new logs every 500ms
   chrome.devtools.inspectedWindow.eval(
     `(function() {
       if (!window.__imgAuditLogs) return [];
@@ -463,7 +587,7 @@ function pollForLogs() {
     function(result, exceptionInfo) {
       if (exceptionInfo) {
         // Page might not be ready yet, continue polling
-        setTimeout(pollForLogs, 500);
+        setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
         return;
       }
       
@@ -479,7 +603,7 @@ function pollForLogs() {
       }
       
       // Continue polling
-      setTimeout(pollForLogs, 500);
+      setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
     }
   );
 }
@@ -493,6 +617,35 @@ function injectSwipeDetection() {
       }
       
       window.__imgAuditSwipeListener = true;
+      
+      function decodeTaboolaImageUrl(encodedUrl) {
+        if (!encodedUrl || typeof encodedUrl !== 'string') {
+          return {
+            originalUrl: "${CONFIG.ERROR_MESSAGES.NO_EXTRACT.replace(/"/g, '\\"')}",
+            encoded: encodedUrl || ''
+          };
+        }
+        
+        try {
+          const decodedOnce = decodeURI(encodedUrl);
+          const parts = decodedOnce.split('/https');
+          if (parts.length > 1) {
+            const originalEncodedUrl = 'https' + parts[1];
+            const originalUrl = decodeURIComponent(originalEncodedUrl);
+            return { originalUrl: originalUrl, encoded: encodedUrl };
+          } else {
+            return {
+              originalUrl: "${CONFIG.ERROR_MESSAGES.NO_EXTRACT.replace(/"/g, '\\"')}",
+              encoded: encodedUrl
+            };
+          }
+        } catch (error) {
+          return {
+            originalUrl: "Error: " + error.message,
+            encoded: encodedUrl
+          };
+        }
+      }
       
       function setupSwipeDetection(element) {
         let touchStartX = null;
@@ -516,9 +669,9 @@ function injectSwipeDetection() {
           
           const deltaX = touchEndX - touchStartX;
           const deltaY = touchEndY - touchStartY;
-          const minSwipeDistance = 50; // Minimum distance for a swipe
           
           // Check if it's a valid swipe (horizontal or vertical)
+          const minSwipeDistance = ${CONFIG.MIN_SWIPE_DISTANCE};
           if (Math.abs(deltaX) > minSwipeDistance || Math.abs(deltaY) > minSwipeDistance) {
             try {
               // Initialize logs array if it doesn't exist
@@ -527,42 +680,26 @@ function injectSwipeDetection() {
               }
               
               const pageUrl = window.location.href;
-              const activeSlideImg = document.querySelector(".swiper-slide-active img");
+              const activeSlideImg = document.querySelector("${CONFIG.SELECTORS.ACTIVE_SLIDE_IMG.replace(/"/g, '\\"')}");
+              
+              let decodedResult;
               
               if (activeSlideImg && activeSlideImg.src) {
                 const encoded = activeSlideImg.src;
-                
-                // First decode the full Taboola URL
-                const decodedOnce = decodeURI(encoded);
-                
-                // Extract the original encoded image URL
-                const parts = decodedOnce.split("/https");
-                if (parts.length > 1) {
-                  const originalEncodedUrl = "https" + parts[1];
-                  
-                  // Decode the original image URL
-                  const originalUrl = decodeURIComponent(originalEncodedUrl);
-                  
-                  // Store log data
-                  window.__imgAuditLogs.push({
-                    pageUrl: pageUrl,
-                    originalUrl: originalUrl,
-                    encoded: encoded
-                  });
-                } else {
-                  window.__imgAuditLogs.push({
-                    pageUrl: pageUrl,
-                    originalUrl: "Could not extract original URL",
-                    encoded: encoded
-                  });
-                }
+                decodedResult = decodeTaboolaImageUrl(encoded);
               } else {
-                window.__imgAuditLogs.push({
-                  pageUrl: pageUrl,
-                  originalUrl: "No active slide image found",
+                decodedResult = {
+                  originalUrl: "${CONFIG.ERROR_MESSAGES.NO_SLIDE.replace(/"/g, '\\"')}",
                   encoded: ""
-                });
+                };
               }
+              
+              // Store log data
+              window.__imgAuditLogs.push({
+                pageUrl: pageUrl,
+                originalUrl: decodedResult.originalUrl,
+                encoded: decodedResult.encoded
+              });
             } catch (error) {
               if (!window.__imgAuditLogs) {
                 window.__imgAuditLogs = [];
@@ -584,7 +721,7 @@ function injectSwipeDetection() {
       
       // Find all elements with data-testid="swiper" and set up listeners
       function attachSwipeListeners() {
-        const swiperElements = document.querySelectorAll('[data-testid="swiper"]');
+        const swiperElements = document.querySelectorAll("${CONFIG.SELECTORS.SWIPER.replace(/"/g, '\\"')}");
         swiperElements.forEach(function(element) {
           if (!element.__imgAuditSwipeAttached) {
             setupSwipeDetection(element);
