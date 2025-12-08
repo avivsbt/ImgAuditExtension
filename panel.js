@@ -225,6 +225,9 @@ function exportToCSV() {
   // Build CSV rows
   const rows = [headers.map(escapeCsvField).join(',')];
   
+  // Collect Story values from QA-approved logs for average calculation
+  const qaApprovedStoryValues = [];
+  
   storedLogs.forEach(function(log) {
     const date = new Date(log.timestamp);
     const timestamp = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
@@ -234,6 +237,16 @@ function exportToCSV() {
     if (typeof apiResults === 'string') {
       // Old format - create default object
       apiResults = getDefaultApiResults();
+    }
+    
+    // Collect Story value if QA approved
+    if (log.qaApproved) {
+      const storyValue = apiResults['Story'] || 'N/A';
+      // Try to parse as number, skip if N/A or invalid
+      const storyNum = parseFloat(storyValue);
+      if (!isNaN(storyNum)) {
+        qaApprovedStoryValues.push(storyNum);
+      }
     }
     
     const row = [
@@ -253,6 +266,30 @@ function exportToCSV() {
     
     rows.push(row.join(','));
   });
+  
+  // Calculate average Story value for QA-approved entries
+  let storyAverage = 'N/A';
+  if (qaApprovedStoryValues.length > 0) {
+    const sum = qaApprovedStoryValues.reduce((a, b) => a + b, 0);
+    storyAverage = (sum / qaApprovedStoryValues.length).toFixed(6);
+  }
+  
+  // Add summary row at the bottom
+  const summaryRow = [
+    '',
+    '',
+    '',
+    '',
+    'Story Average (QA Approved)',
+    '',
+    '',
+    escapeCsvField(storyAverage),
+    '',
+    '',
+    '',
+    ''
+  ];
+  rows.push(summaryRow.join(','));
   
   // Create CSV content
   const csvContent = rows.join('\n');
