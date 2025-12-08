@@ -4,28 +4,97 @@
   <meta charset="UTF-8">
   <title>ImgAudit Panel</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body {
       margin: 0;
-      padding: 20px;
+      padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #ffffff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      padding: 12px 16px;
       background-color: #f5f5f5;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
       color: #333;
-      margin: 0 0 20px 0;
     }
-    .container {
+    .clear-btn {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .clear-btn:hover {
+      background: #3367d6;
+    }
+    .logs-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .log-entry {
+      background: #f9f9f9;
+      border-left: 3px solid #4285f4;
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .log-entry .timestamp {
+      color: #666;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    .log-entry .label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    .log-entry .value {
+      color: #555;
+      word-break: break-all;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 11px;
       background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 8px;
+      border-radius: 3px;
+      margin-top: 4px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+    .empty-state p {
+      margin: 8px 0;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>ImgAudit Panel</h1>
-    <p>Welcome to the ImgAudit DevTools extension!</p>
+  <div class="header">
+    <h1>ImgAudit</h1>
+    <button class="clear-btn" id="clearBtn">Clear Logs</button>
+  </div>
+  <div class="logs-container" id="logsContainer">
+    <div class="empty-state">
+      <p>No logs yet</p>
+      <p style="font-size: 11px;">Swipe on elements with data-testid="swiper" to see logs</p>
+    </div>
   </div>
   <script src="panel.js"></script>
 </body>
