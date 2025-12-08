@@ -7,7 +7,7 @@ const clearBtn = document.getElementById('clearBtn');
 
 // Log when the panel is opened
 window.addEventListener('load', function() {
-  console.log("ImgAudit panel opened and ready!");
+  console.log("Img Audit Extension panel opened and ready!");
   
   // Inject swipe detection code into the inspected page
   injectSwipeDetection();
