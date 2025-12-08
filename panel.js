@@ -5,6 +5,7 @@ const STORAGE_KEY = 'imgAuditLogs';
 let lastLogIndex = 0;
 const logsContainer = document.getElementById('logsContainer');
 const clearBtn = document.getElementById('clearBtn');
+const downloadBtn = document.getElementById('downloadBtn');
 
 // Log when the panel is opened
 window.addEventListener('load', function() {
@@ -22,6 +23,11 @@ window.addEventListener('load', function() {
   // Clear logs button
   clearBtn.addEventListener('click', function() {
     clearLogs();
+  });
+  
+  // Download CSV button
+  downloadBtn.addEventListener('click', function() {
+    exportToCSV();
   });
 });
 
@@ -178,6 +184,94 @@ function updateQaStatus(logId, qaApproved) {
     storedLogs[logIndex].qaApproved = qaApproved;
     saveLogsToStorage(storedLogs);
   }
+}
+
+function escapeCsvField(field) {
+  if (field === null || field === undefined) {
+    return '';
+  }
+  const str = String(field);
+  // If field contains comma, newline, or quote, wrap in quotes and escape quotes
+  if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function exportToCSV() {
+  const storedLogs = getStoredLogs();
+  
+  if (storedLogs.length === 0) {
+    alert('No logs to export');
+    return;
+  }
+  
+  // CSV Headers
+  const headers = [
+    'Timestamp',
+    'Page URL',
+    'Original Image URL',
+    'Encoded Image URL',
+    'QA Approved',
+    'Thumbnail',
+    'Full Screen',
+    'Story',
+    'Width',
+    'Height',
+    'Laplacian Variance',
+    'Total Pixels'
+  ];
+  
+  // Build CSV rows
+  const rows = [headers.map(escapeCsvField).join(',')];
+  
+  storedLogs.forEach(function(log) {
+    const date = new Date(log.timestamp);
+    const timestamp = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    
+    // Get API results (handle both object and old HTML string format)
+    let apiResults = log.apiResults || {};
+    if (typeof apiResults === 'string') {
+      // Old format - create default object
+      apiResults = getDefaultApiResults();
+    }
+    
+    const row = [
+      escapeCsvField(timestamp),
+      escapeCsvField(log.pageUrl || ''),
+      escapeCsvField(log.originalUrl || ''),
+      escapeCsvField(log.encoded || ''),
+      escapeCsvField(log.qaApproved ? 'Yes' : 'No'),
+      escapeCsvField(apiResults['Thumbnail'] || 'N/A'),
+      escapeCsvField(apiResults['Full Screen'] || 'N/A'),
+      escapeCsvField(apiResults['Story'] || 'N/A'),
+      escapeCsvField(apiResults['Width'] || 'N/A'),
+      escapeCsvField(apiResults['Height'] || 'N/A'),
+      escapeCsvField(apiResults['Laplacian Variance'] || 'N/A'),
+      escapeCsvField(apiResults['Total Pixels'] || 'N/A')
+    ];
+    
+    rows.push(row.join(','));
+  });
+  
+  // Create CSV content
+  const csvContent = rows.join('\n');
+  
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', `img-audit-logs-${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // Clean up the URL object
+  URL.revokeObjectURL(url);
 }
 
 function renderApiResults(apiResults) {

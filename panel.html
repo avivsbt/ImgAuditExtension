@@ -42,6 +42,22 @@
     .clear-btn:hover {
       background: #3367d6;
     }
+    .header-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .download-btn {
+      background: #34a853;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .download-btn:hover {
+      background: #2d8e47;
+    }
     .logs-container {
       flex: 1;
       overflow-y: auto;
@@ -109,7 +125,10 @@
 <body>
   <div class="header">
     <h1>Img Audit Extension</h1>
-    <button class="clear-btn" id="clearBtn">Clear Logs</button>
+    <div class="header-buttons">
+      <button class="download-btn" id="downloadBtn">Download CSV</button>
+      <button class="clear-btn" id="clearBtn">Clear Logs</button>
+    </div>
   </div>
   <div class="logs-container" id="logsContainer">
     <div class="empty-state">
