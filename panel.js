@@ -38,7 +38,8 @@ function addLogEntry(logData) {
   const logEntry = document.createElement('div');
   logEntry.className = 'log-entry';
   
-  const timestamp = new Date().toLocaleTimeString();
+  const now = new Date();
+  const timestamp = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
   
   // Initial HTML with loading state
   logEntry.innerHTML = `
