@@ -51,6 +51,12 @@ function addLogEntry(logData) {
     <div class="value">${escapeHtml(logData.encoded)}</div>
     <div class="label" style="margin-top: 12px;">API Results:</div>
     <div class="value" id="api-results-${timestamp}">Loading...</div>
+    <div class="qa-checkbox-container">
+      <label>
+        <input type="checkbox" id="qa-checkbox-${timestamp}" />
+        QA Approved
+      </label>
+    </div>
   `;
   
   logsContainer.insertBefore(logEntry, logsContainer.firstChild);
