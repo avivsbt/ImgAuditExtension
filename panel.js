@@ -40,6 +40,7 @@ function addLogEntry(logData) {
   
   const timestamp = new Date().toLocaleTimeString();
   
+  // Initial HTML with loading state
   logEntry.innerHTML = `
     <div class="timestamp">${timestamp}</div>
     <div class="label">Page URL:</div>
@@ -48,9 +49,104 @@ function addLogEntry(logData) {
     <div class="value">${escapeHtml(logData.originalUrl)}</div>
     <div class="label" style="margin-top: 12px;">Encoded Image URL:</div>
     <div class="value">${escapeHtml(logData.encoded)}</div>
+    <div class="label" style="margin-top: 12px;">API Results:</div>
+    <div class="value" id="api-results-${timestamp}">Loading...</div>
   `;
   
   logsContainer.insertBefore(logEntry, logsContainer.firstChild);
+  
+  // Make API calls if we have a valid original URL
+  if (logData.originalUrl && logData.originalUrl !== "Could not extract original URL" && logData.originalUrl !== "No active slide image found" && !logData.originalUrl.startsWith("Error:")) {
+    fetchApiResults(logData.originalUrl, `api-results-${timestamp}`);
+  } else {
+    const resultsDiv = document.getElementById(`api-results-${timestamp}`);
+    if (resultsDiv) {
+      resultsDiv.innerHTML = '<span style="color: #999;">No valid image URL to analyze</span>';
+    }
+  }
+}
+
+function parseXml(xmlString) {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+  return xmlDoc;
+}
+
+function getXmlValue(xmlDoc, tagName) {
+  const element = xmlDoc.getElementsByTagName(tagName)[0];
+  return element ? element.textContent : 'N/A';
+}
+
+async function fetchApiResults(originalUrl, resultsId) {
+  const encodedUrl = encodeURIComponent(originalUrl);
+  const resultsDiv = document.getElementById(resultsId);
+  
+  if (!resultsDiv) return;
+  
+  try {
+    // Call both APIs
+    const [qualityResponse, metricsResponse] = await Promise.all([
+      fetch(`http://content-enricher.taboolasyndication.com:8400/api/images/analyze-quality?url=${encodedUrl}`),
+      fetch(`http://content-enricher.taboolasyndication.com:8400/api/images/metrics?url=${encodedUrl}`)
+    ]);
+    
+    let resultsHtml = '';
+    
+    // Parse quality response
+    if (qualityResponse.ok) {
+      const qualityXml = await qualityResponse.text();
+      const qualityDoc = parseXml(qualityXml);
+      
+      const thumbnail = getXmlValue(qualityDoc, 'thumbnail');
+      const fullScreen = getXmlValue(qualityDoc, 'full_screen');
+      const story = getXmlValue(qualityDoc, 'story');
+      
+      resultsHtml += `
+        <div style="margin-bottom: 12px;">
+          <div class="label" style="font-size: 11px; color: #4285f4;">Quality Analysis:</div>
+          <div style="margin-left: 8px; margin-top: 4px;">
+            <div><strong>Thumbnail:</strong> ${thumbnail}</div>
+            <div><strong>Full Screen:</strong> ${fullScreen}</div>
+            <div><strong>Story:</strong> ${story}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      resultsHtml += `<div style="color: #d32f2f; margin-bottom: 8px;">Quality API Error: ${qualityResponse.status}</div>`;
+    }
+    
+    // Parse metrics response
+    if (metricsResponse.ok) {
+      const metricsXml = await metricsResponse.text();
+      const metricsDoc = parseXml(metricsXml);
+      
+      const width = getXmlValue(metricsDoc, 'width');
+      const height = getXmlValue(metricsDoc, 'height');
+      const laplacianVariance = getXmlValue(metricsDoc, 'laplacianVariance');
+      const totalPixels = getXmlValue(metricsDoc, 'totalPixels');
+      
+      resultsHtml += `
+        <div>
+          <div class="label" style="font-size: 11px; color: #4285f4;">Image Metrics:</div>
+          <div style="margin-left: 8px; margin-top: 4px;">
+            <div><strong>Width:</strong> ${width}</div>
+            <div><strong>Height:</strong> ${height}</div>
+            <div><strong>Laplacian Variance:</strong> ${laplacianVariance}</div>
+            <div><strong>Total Pixels:</strong> ${totalPixels}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      resultsHtml += `<div style="color: #d32f2f;">Metrics API Error: ${metricsResponse.status}</div>`;
+    }
+    
+    resultsDiv.innerHTML = resultsHtml;
+    
+  } catch (error) {
+    if (resultsDiv) {
+      resultsDiv.innerHTML = `<span style="color: #d32f2f;">Error fetching API results: ${error.message}</span>`;
+    }
+  }
 }
 
 function escapeHtml(text) {

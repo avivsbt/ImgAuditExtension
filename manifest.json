@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "description": "A Chrome DevTools extension for image auditing",
   "devtools_page": "devtools.html",
-  "permissions": []
+  "permissions": [],
+  "host_permissions": [
+    "http://content-enricher.taboolasyndication.com:8400/*"
+  ]
 }
 
