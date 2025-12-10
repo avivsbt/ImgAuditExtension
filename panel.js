@@ -476,15 +476,41 @@ function renderApiResults(apiResults) {
   return html;
 }
 
-function parseXml(xmlString) {
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
-  return xmlDoc;
+// ============================================================================
+// API RESPONSE PARSING
+// ============================================================================
+
+/**
+ * Maps JSON field names to display names
+ */
+const JSON_FIELD_MAPPING = {
+  // Quality fields (JSON -> Display)
+  'thumbnail': 'Thumbnail',
+  'full_screen': 'Full Screen',
+  'story': 'Story',
+  // Metrics fields (JSON -> Display)
+  'width': 'Width',
+  'height': 'Height',
+  'laplacianVariance': 'Laplacian Variance',
+  'totalPixels': 'Total Pixels'
+};
+
+function parseJsonResponse(jsonString) {
+  try {
+    return JSON.parse(jsonString);
+  } catch (e) {
+    console.error('Error parsing JSON response:', e);
+    return null;
+  }
 }
 
-function getXmlValue(xmlDoc, tagName) {
-  const element = xmlDoc.getElementsByTagName(tagName)[0];
-  return element ? element.textContent : 'N/A';
+function mapJsonToDisplayFormat(jsonData) {
+  const mapped = {};
+  Object.keys(JSON_FIELD_MAPPING).forEach(jsonKey => {
+    const displayKey = JSON_FIELD_MAPPING[jsonKey];
+    mapped[displayKey] = jsonData[jsonKey] !== undefined ? jsonData[jsonKey] : 'N/A';
+  });
+  return mapped;
 }
 
 async function fetchApiResults(originalUrl, resultsId, logId) {
@@ -503,35 +529,56 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
       fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.METRICS}?url=${encodedUrl}`)
     ]);
     
-    // Parse quality response
+    // Parse quality response (JSON)
     if (qualityResponse.ok) {
-      const qualityXml = await qualityResponse.text();
-      const qualityDoc = parseXml(qualityXml);
+      const qualityText = await qualityResponse.text();
+      const qualityJson = parseJsonResponse(qualityText);
       
-      API_RESULT_FIELDS.QUALITY.forEach((field, index) => {
-        const xmlTag = index === 0 ? 'thumbnail' : index === 1 ? 'full_screen' : 'story';
-        apiResults[field] = getXmlValue(qualityDoc, xmlTag);
-      });
+      if (qualityJson) {
+        const mappedQuality = mapJsonToDisplayFormat(qualityJson);
+        // Only update quality fields
+        API_RESULT_FIELDS.QUALITY.forEach(field => {
+          if (mappedQuality[field] !== undefined) {
+            apiResults[field] = mappedQuality[field];
+          }
+        });
+      } else {
+        // Set error for all quality fields if parsing failed
+        API_RESULT_FIELDS.QUALITY.forEach(field => {
+          apiResults[field] = `Error: Failed to parse response`;
+        });
+      }
     } else {
-      apiResults['Thumbnail'] = `Error: ${qualityResponse.status}`;
-      apiResults['Full Screen'] = `Error: ${qualityResponse.status}`;
-      apiResults['Story'] = `Error: ${qualityResponse.status}`;
+      // Set error for all quality fields
+      API_RESULT_FIELDS.QUALITY.forEach(field => {
+        apiResults[field] = `Error: ${qualityResponse.status}`;
+      });
     }
     
-    // Parse metrics response
+    // Parse metrics response (JSON)
     if (metricsResponse.ok) {
-      const metricsXml = await metricsResponse.text();
-      const metricsDoc = parseXml(metricsXml);
+      const metricsText = await metricsResponse.text();
+      const metricsJson = parseJsonResponse(metricsText);
       
-      const metricsTags = ['width', 'height', 'laplacianVariance', 'totalPixels'];
-      API_RESULT_FIELDS.METRICS.forEach((field, index) => {
-        apiResults[field] = getXmlValue(metricsDoc, metricsTags[index]);
-      });
+      if (metricsJson) {
+        const mappedMetrics = mapJsonToDisplayFormat(metricsJson);
+        // Only update metrics fields
+        API_RESULT_FIELDS.METRICS.forEach(field => {
+          if (mappedMetrics[field] !== undefined) {
+            apiResults[field] = mappedMetrics[field];
+          }
+        });
+      } else {
+        // Set error for all metrics fields if parsing failed
+        API_RESULT_FIELDS.METRICS.forEach(field => {
+          apiResults[field] = `Error: Failed to parse response`;
+        });
+      }
     } else {
-      apiResults['Width'] = `Error: ${metricsResponse.status}`;
-      apiResults['Height'] = `Error: ${metricsResponse.status}`;
-      apiResults['Laplacian Variance'] = `Error: ${metricsResponse.status}`;
-      apiResults['Total Pixels'] = `Error: ${metricsResponse.status}`;
+      // Set error for all metrics fields
+      API_RESULT_FIELDS.METRICS.forEach(field => {
+        apiResults[field] = `Error: ${metricsResponse.status}`;
+      });
     }
     
     // Render and display results
@@ -548,14 +595,10 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     }
     
   } catch (error) {
-    // Update error in results object
-    apiResults['Thumbnail'] = `Error: ${error.message}`;
-    apiResults['Full Screen'] = `Error: ${error.message}`;
-    apiResults['Story'] = `Error: ${error.message}`;
-    apiResults['Width'] = `Error: ${error.message}`;
-    apiResults['Height'] = `Error: ${error.message}`;
-    apiResults['Laplacian Variance'] = `Error: ${error.message}`;
-    apiResults['Total Pixels'] = `Error: ${error.message}`;
+    // Update error in results object for all fields
+    [...API_RESULT_FIELDS.QUALITY, ...API_RESULT_FIELDS.METRICS].forEach(field => {
+      apiResults[field] = `Error: ${error.message}`;
+    });
     
     if (resultsDiv) {
       resultsDiv.innerHTML = renderApiResults(apiResults);
