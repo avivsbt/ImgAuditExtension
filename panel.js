@@ -63,6 +63,16 @@ window.addEventListener('load', function() {
   // Load logs from localStorage
   loadLogsFromStorage();
   
+  // Listen for page navigation events
+  chrome.devtools.network.onNavigated.addListener(function() {
+    console.log("Page navigated, resetting and re-injecting...");
+    lastLogIndex = 0;
+    // Re-inject code after navigation
+    setTimeout(() => {
+      injectSwipeDetection();
+    }, 500);
+  });
+  
   // Inject swipe detection code into the inspected page
   injectSwipeDetection();
   
@@ -622,37 +632,58 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
 // ============================================================================
 
 function pollForLogs() {
-  chrome.devtools.inspectedWindow.eval(
-    `(function() {
-      if (!window.__imgAuditLogs) return [];
-      return window.__imgAuditLogs.slice(${lastLogIndex});
-    })()`,
-    function(result, exceptionInfo) {
-      if (exceptionInfo) {
-        // Page might not be ready yet, continue polling
-        setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
-        return;
-      }
-      
-      if (result && Array.isArray(result) && result.length > 0) {
-        result.forEach(function(logData) {
-          // Add timestamp if not present
-          if (!logData.timestamp) {
-            logData.timestamp = new Date().toISOString();
+  try {
+    chrome.devtools.inspectedWindow.eval(
+      `(function() {
+        if (!window.__imgAuditLogs) return [];
+        return window.__imgAuditLogs.slice(${lastLogIndex});
+      })()`,
+      function(result, exceptionInfo) {
+        // Handle context errors (page navigation, reload, etc.)
+        if (exceptionInfo) {
+          // Check for context invalidation errors
+          if (exceptionInfo.code === -32602 || 
+              exceptionInfo.value && exceptionInfo.value.indexOf('uniqueContextId') !== -1) {
+            // Context was invalidated (page navigated/reloaded)
+            // Reset and re-inject code
+            lastLogIndex = 0;
+            setTimeout(() => {
+              injectSwipeDetection();
+              setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
+            }, 1000); // Wait a bit for page to stabilize
+            return;
           }
-          addLogEntry(logData);
-        });
-        lastLogIndex += result.length;
+          
+          // Other errors - continue polling with delay
+          setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
+          return;
+        }
+        
+        if (result && Array.isArray(result) && result.length > 0) {
+          result.forEach(function(logData) {
+            // Add timestamp if not present
+            if (!logData.timestamp) {
+              logData.timestamp = new Date().toISOString();
+            }
+            addLogEntry(logData);
+          });
+          lastLogIndex += result.length;
+        }
+        
+        // Continue polling
+        setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
       }
-      
-      // Continue polling
-      setTimeout(pollForLogs, CONFIG.POLL_INTERVAL);
-    }
-  );
+    );
+  } catch (error) {
+    // Fallback error handling
+    console.error('Error in pollForLogs:', error);
+    setTimeout(pollForLogs, CONFIG.POLL_INTERVAL * 2); // Longer delay on error
+  }
 }
 
 function injectSwipeDetection() {
-  const code = `
+  try {
+    const code = `
     (function() {
       // Remove existing listeners if any
       if (window.__imgAuditSwipeListener) {
@@ -790,13 +821,30 @@ function injectSwipeDetection() {
     })();
   `;
   
-  // Inject the code into the inspected page
-  chrome.devtools.inspectedWindow.eval(code, function(result, exceptionInfo) {
-    if (exceptionInfo) {
-      console.error("Error injecting swipe detection:", exceptionInfo);
-    } else {
-      console.log("Swipe detection code injected successfully!");
-    }
-  });
+    // Inject the code into the inspected page
+    chrome.devtools.inspectedWindow.eval(code, function(result, exceptionInfo) {
+      if (exceptionInfo) {
+        // Handle context errors gracefully
+        if (exceptionInfo.code === -32602 || 
+            (exceptionInfo.value && exceptionInfo.value.indexOf('uniqueContextId') !== -1)) {
+          // Context invalidated - page might be navigating
+          console.warn("Context invalidated, will retry injection after delay");
+          setTimeout(() => {
+            injectSwipeDetection();
+          }, 1000);
+        } else {
+          console.error("Error injecting swipe detection:", exceptionInfo);
+        }
+      } else {
+        console.log("Swipe detection code injected successfully!");
+      }
+    });
+  } catch (error) {
+    console.error("Error in injectSwipeDetection:", error);
+    // Retry after delay
+    setTimeout(() => {
+      injectSwipeDetection();
+    }, 2000);
+  }
 }
 
