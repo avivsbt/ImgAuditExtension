@@ -9,7 +9,8 @@ const CONFIG = {
   API_BASE_URL: 'http://content-enricher.taboolasyndication.com:8400',
   API_ENDPOINTS: {
     QUALITY: '/api/images/analyze-quality',
-    METRICS: '/api/images/metrics'
+    METRICS: '/api/images/metrics',
+    COLLAGE: '/api/images/collage/analyze'
   },
   SELECTORS: {
     SWIPER: '[data-testid="swiper"]',
@@ -29,7 +30,8 @@ const CONFIG = {
 
 const API_RESULT_FIELDS = {
   QUALITY: ['Thumbnail', 'Full Screen', 'Story'],
-  METRICS: ['Width', 'Height', 'Laplacian Variance', 'Total Pixels']
+  METRICS: ['Width', 'Height', 'Laplacian Variance', 'Total Pixels'],
+  COLLAGE: ['Collage', 'Confidence']
 };
 
 const CSV_HEADERS = [
@@ -39,7 +41,8 @@ const CSV_HEADERS = [
   'Encoded Image URL',
   'QA Approved',
   ...API_RESULT_FIELDS.QUALITY,
-  ...API_RESULT_FIELDS.METRICS
+  ...API_RESULT_FIELDS.METRICS,
+  ...API_RESULT_FIELDS.COLLAGE
 ];
 
 // ============================================================================
@@ -157,6 +160,9 @@ function getDefaultApiResults() {
   API_RESULT_FIELDS.METRICS.forEach(field => {
     results[field] = 'N/A';
   });
+  API_RESULT_FIELDS.COLLAGE.forEach(field => {
+    results[field] = 'N/A';
+  });
   return results;
 }
 
@@ -206,15 +212,35 @@ function renderLogEntry(logData, saveToStorage = false) {
   const hasApiResults = logData.apiResults && logData.apiResults !== null;
   const apiResultsHtml = hasApiResults ? renderApiResults(logData.apiResults) : '<span>Loading...</span>';
   
+  // Helper function to create URL with thumbnail
+  const createUrlWithThumbnail = (url, label) => {
+    const isValidUrl = url && isValidImageUrl(url);
+    if (isValidUrl) {
+      const escapedUrl = escapeHtml(url);
+      return `
+        <div class="label" style="margin-top: 12px;">${label}:</div>
+        <div class="value value-with-thumbnail">
+          <div class="url-text">${escapedUrl}</div>
+          <a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapedUrl}" alt="Thumbnail" class="thumbnail" onerror="this.style.display='none'" />
+          </a>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="label" style="margin-top: 12px;">${label}:</div>
+        <div class="value">${escapeHtml(url || 'N/A')}</div>
+      `;
+    }
+  };
+  
   // Initial HTML
   logEntry.innerHTML = `
     <div class="timestamp">${timestamp}</div>
     <div class="label">Page URL:</div>
     <div class="value">${escapeHtml(logData.pageUrl)}</div>
-    <div class="label" style="margin-top: 12px;">Original Image URL:</div>
-    <div class="value">${escapeHtml(logData.originalUrl)}</div>
-    <div class="label" style="margin-top: 12px;">Encoded Image URL:</div>
-    <div class="value">${escapeHtml(logData.encoded)}</div>
+    ${createUrlWithThumbnail(logData.originalUrl, 'Original Image URL')}
+    ${createUrlWithThumbnail(logData.encoded, 'Encoded Image URL')}
     <div class="label" style="margin-top: 12px;">API Results:</div>
     <div class="value" id="api-results-${logData.id}">${apiResultsHtml}</div>
     <div class="qa-checkbox-container">
@@ -239,7 +265,8 @@ function renderLogEntry(logData, saveToStorage = false) {
   const hasDefaultResults = logData.apiResults && 
     typeof logData.apiResults === 'object' &&
     (logData.apiResults[API_RESULT_FIELDS.QUALITY[0]] === 'N/A' || 
-     logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A');
+     logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A' ||
+     logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === 'N/A');
   
   if (hasDefaultResults && isValidImageUrl(logData.originalUrl)) {
     fetchApiResults(logData.originalUrl, `api-results-${logData.id}`, logData.id);
@@ -396,7 +423,9 @@ function exportToCSV() {
       escapeCsvField(apiResults['Width'] || 'N/A'),
       escapeCsvField(apiResults['Height'] || 'N/A'),
       escapeCsvField(apiResults['Laplacian Variance'] || 'N/A'),
-      escapeCsvField(apiResults['Total Pixels'] || 'N/A')
+      escapeCsvField(apiResults['Total Pixels'] || 'N/A'),
+      escapeCsvField(apiResults['Collage'] !== undefined ? (apiResults['Collage'] ? 'Yes' : 'No') : 'N/A'),
+      escapeCsvField(apiResults['Confidence'] !== undefined ? apiResults['Confidence'] : 'N/A')
     ];
     
     rows.push(row.join(','));
@@ -419,6 +448,8 @@ function exportToCSV() {
     '',
     '',
     escapeCsvField(storyAverage),
+    '',
+    '',
     '',
     '',
     '',
@@ -472,13 +503,24 @@ function renderApiResults(apiResults) {
   
   // Image Metrics section
   html += `
-    <div>
+    <div style="margin-bottom: 12px;">
       <div class="label" style="font-size: 11px; color: #4285f4;">Image Metrics:</div>
       <div style="margin-left: 8px; margin-top: 4px;">
         <div><strong>Width:</strong> ${apiResults['Width'] || 'N/A'}</div>
         <div><strong>Height:</strong> ${apiResults['Height'] || 'N/A'}</div>
         <div><strong>Laplacian Variance:</strong> ${apiResults['Laplacian Variance'] || 'N/A'}</div>
         <div><strong>Total Pixels:</strong> ${apiResults['Total Pixels'] || 'N/A'}</div>
+      </div>
+    </div>
+  `;
+  
+  // Collage Analysis section
+  html += `
+    <div>
+      <div class="label" style="font-size: 11px; color: #4285f4;">Collage Analysis:</div>
+      <div style="margin-left: 8px; margin-top: 4px;">
+        <div><strong>Collage:</strong> ${apiResults['Collage'] !== undefined ? (apiResults['Collage'] ? 'Yes' : 'No') : 'N/A'}</div>
+        <div><strong>Confidence:</strong> ${apiResults['Confidence'] !== undefined ? apiResults['Confidence'] : 'N/A'}</div>
       </div>
     </div>
   `;
@@ -502,7 +544,10 @@ const JSON_FIELD_MAPPING = {
   'width': 'Width',
   'height': 'Height',
   'laplacianVariance': 'Laplacian Variance',
-  'totalPixels': 'Total Pixels'
+  'totalPixels': 'Total Pixels',
+  // Collage fields (JSON -> Display)
+  'collage': 'Collage',
+  'confidence': 'Confidence'
 };
 
 function parseJsonResponse(jsonString) {
@@ -518,25 +563,41 @@ function mapJsonToDisplayFormat(jsonData) {
   const mapped = {};
   Object.keys(JSON_FIELD_MAPPING).forEach(jsonKey => {
     const displayKey = JSON_FIELD_MAPPING[jsonKey];
-    mapped[displayKey] = jsonData[jsonKey] !== undefined ? jsonData[jsonKey] : 'N/A';
+    if (jsonData[jsonKey] !== undefined) {
+      // Handle boolean values for collage
+      if (jsonKey === 'collage' && typeof jsonData[jsonKey] === 'boolean') {
+        mapped[displayKey] = jsonData[jsonKey];
+      } else {
+        mapped[displayKey] = jsonData[jsonKey];
+      }
+    } else {
+      mapped[displayKey] = 'N/A';
+    }
   });
   return mapped;
 }
 
 async function fetchApiResults(originalUrl, resultsId, logId) {
   const encodedUrl = encodeURIComponent(originalUrl);
-  const resultsDiv = document.getElementById(resultsId);
   
-  if (!resultsDiv) return;
+  // Helper function to get results div - re-query each time to ensure it exists
+  const getResultsDiv = () => document.getElementById(resultsId);
+  let resultsDiv = getResultsDiv();
+  
+  if (!resultsDiv) {
+    console.warn(`Results div not found: ${resultsId}`);
+    return;
+  }
   
   // Initialize API results object with default values
   const apiResults = getDefaultApiResults();
   
   try {
-    // Call both APIs
-    const [qualityResponse, metricsResponse] = await Promise.all([
+    // Call all APIs
+    const [qualityResponse, metricsResponse, collageResponse] = await Promise.all([
       fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.QUALITY}?url=${encodedUrl}`),
-      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.METRICS}?url=${encodedUrl}`)
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.METRICS}?url=${encodedUrl}`),
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.COLLAGE}?url=${encodedUrl}`)
     ]);
     
     // Parse quality response (JSON)
@@ -591,8 +652,39 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
       });
     }
     
-    // Render and display results
-    resultsDiv.innerHTML = renderApiResults(apiResults);
+    // Parse collage response (JSON)
+    if (collageResponse.ok) {
+      const collageText = await collageResponse.text();
+      const collageJson = parseJsonResponse(collageText);
+      
+      if (collageJson) {
+        const mappedCollage = mapJsonToDisplayFormat(collageJson);
+        // Update all collage fields
+        API_RESULT_FIELDS.COLLAGE.forEach(field => {
+          if (mappedCollage[field] !== undefined) {
+            apiResults[field] = mappedCollage[field];
+          }
+        });
+      } else {
+        // Set error for all collage fields if parsing failed
+        API_RESULT_FIELDS.COLLAGE.forEach(field => {
+          apiResults[field] = `Error: Failed to parse response`;
+        });
+      }
+    } else {
+      // Set error for all collage fields
+      API_RESULT_FIELDS.COLLAGE.forEach(field => {
+        apiResults[field] = `Error: ${collageResponse.status}`;
+      });
+    }
+    
+    // Render and display results - re-query to ensure element still exists
+    resultsDiv = getResultsDiv();
+    if (resultsDiv) {
+      resultsDiv.innerHTML = renderApiResults(apiResults);
+    } else {
+      console.warn(`Results div not found when trying to render: ${resultsId}`);
+    }
     
     // Save API results object to localStorage
     if (logId) {
@@ -606,12 +698,16 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     
   } catch (error) {
     // Update error in results object for all fields
-    [...API_RESULT_FIELDS.QUALITY, ...API_RESULT_FIELDS.METRICS].forEach(field => {
+    [...API_RESULT_FIELDS.QUALITY, ...API_RESULT_FIELDS.METRICS, ...API_RESULT_FIELDS.COLLAGE].forEach(field => {
       apiResults[field] = `Error: ${error.message}`;
     });
     
+    // Re-query to ensure element still exists
+    resultsDiv = getResultsDiv();
     if (resultsDiv) {
       resultsDiv.innerHTML = renderApiResults(apiResults);
+    } else {
+      console.warn(`Results div not found when trying to render error: ${resultsId}`);
     }
     
     // Save error to localStorage
