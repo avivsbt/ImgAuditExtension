@@ -747,48 +747,82 @@ function injectSwipeDetection() {
           // Check if it's a valid swipe (horizontal or vertical)
           const minSwipeDistance = ${CONFIG.MIN_SWIPE_DISTANCE};
           if (Math.abs(deltaX) > minSwipeDistance || Math.abs(deltaY) > minSwipeDistance) {
-            try {
-              // Initialize logs array if it doesn't exist
-              if (!window.__imgAuditLogs) {
-                window.__imgAuditLogs = [];
-              }
+            // Store current active slide before the transition
+            const currentActiveSlide = document.querySelector('.swiper-slide-active');
+            
+            // Wait for slide transition to complete before logging
+            let checkCount = 0;
+            const maxChecks = 20; // Maximum 2 seconds (20 * 100ms)
+            
+            const checkForSlideChange = function() {
+              checkCount++;
+              const newActiveSlide = document.querySelector('.swiper-slide-active');
               
-              const pageUrl = window.location.href;
-              const activeSlideImg = document.querySelector("${CONFIG.SELECTORS.ACTIVE_SLIDE_IMG.replace(/"/g, '\\"')}");
-              
-              let decodedResult;
-              
-              if (activeSlideImg && activeSlideImg.src) {
-                const encoded = activeSlideImg.src;
-                decodedResult = decodeTaboolaImageUrl(encoded);
+              // If slide has changed (different element) or max checks reached, proceed with logging
+              if (newActiveSlide !== currentActiveSlide || checkCount >= maxChecks) {
+                logActiveSlide();
               } else {
-                decodedResult = {
-                  originalUrl: "${CONFIG.ERROR_MESSAGES.NO_SLIDE.replace(/"/g, '\\"')}",
-                  encoded: ""
-                };
+                // Slide hasn't changed yet, check again after a short delay
+                setTimeout(checkForSlideChange, 100);
               }
-              
-              // Store log data
-              window.__imgAuditLogs.push({
-                pageUrl: pageUrl,
-                originalUrl: decodedResult.originalUrl,
-                encoded: decodedResult.encoded
-              });
-            } catch (error) {
-              if (!window.__imgAuditLogs) {
-                window.__imgAuditLogs = [];
-              }
-              window.__imgAuditLogs.push({
-                pageUrl: window.location.href,
-                originalUrl: "Error: " + error.message,
-                encoded: ""
-              });
-            }
+            };
+            
+            // Start checking for slide change after a short delay to allow transition to start
+            setTimeout(checkForSlideChange, 200);
             
             touchStartX = null;
             touchStartY = null;
             touchEndX = null;
             touchEndY = null;
+          }
+        }
+        
+        function logActiveSlide() {
+          try {
+            // Initialize logs array if it doesn't exist
+            if (!window.__imgAuditLogs) {
+              window.__imgAuditLogs = [];
+            }
+            
+            const pageUrl = window.location.href;
+            const activeSlideImg = document.querySelector("${CONFIG.SELECTORS.ACTIVE_SLIDE_IMG.replace(/"/g, '\\"')}");
+            
+            // Skip if the active slide is an interstitial
+            if (activeSlideImg) {
+              const activeSlide = activeSlideImg.closest('.swiper-slide');
+              if (activeSlide && activeSlide.getAttribute('data-type') === 'interstitial') {
+                // Skip processing interstitial slides
+                return;
+              }
+            }
+            
+            let decodedResult;
+            
+            if (activeSlideImg && activeSlideImg.src) {
+              const encoded = activeSlideImg.src;
+              decodedResult = decodeTaboolaImageUrl(encoded);
+            } else {
+              decodedResult = {
+                originalUrl: "${CONFIG.ERROR_MESSAGES.NO_SLIDE.replace(/"/g, '\\"')}",
+                encoded: ""
+              };
+            }
+            
+            // Store log data
+            window.__imgAuditLogs.push({
+              pageUrl: pageUrl,
+              originalUrl: decodedResult.originalUrl,
+              encoded: decodedResult.encoded
+            });
+          } catch (error) {
+            if (!window.__imgAuditLogs) {
+              window.__imgAuditLogs = [];
+            }
+            window.__imgAuditLogs.push({
+              pageUrl: window.location.href,
+              originalUrl: "Error: " + error.message,
+              encoded: ""
+            });
           }
         }
       }
