@@ -5,8 +5,11 @@ A Chrome DevTools extension for image auditing that captures image data, analyze
 ## Features
 
 - **Swipe Detection**: Automatically detects swipe gestures on elements with `data-testid="swiper"`
+- **Interstitial Filtering**: Automatically skips interstitial slides (slides with `data-type="interstitial"`)
 - **Image URL Decoding**: Extracts and decodes Taboola image URLs from active swiper slides
 - **Quality Analysis**: Calls API endpoints to analyze image quality metrics
+- **Collage Detection**: Analyzes images to detect if they are collages with confidence scores
+- **Image Thumbnails**: Displays thumbnail previews next to Original and Encoded Image URLs
 - **Data Persistence**: Stores all logs in localStorage for persistence across sessions
 - **QA Approval**: Track QA approval status for each image
 - **CSV Export**: Export all logs with calculated thresholds to CSV format
@@ -37,6 +40,7 @@ The extension calls the following APIs for image analysis:
 
 - `http://content-enricher.taboolasyndication.com:8400/api/images/analyze-quality?url={imageUrl}`
 - `http://content-enricher.taboolasyndication.com:8400/api/images/metrics?url={imageUrl}`
+- `http://content-enricher.taboolasyndication.com:8400/api/images/collage/analyze?url={imageUrl}`
 
 ### API Response Format
 
@@ -51,6 +55,10 @@ The extension calls the following APIs for image analysis:
 - Laplacian Variance
 - Total Pixels
 
+**Collage Analysis:**
+- Collage (boolean): Indicates if the image is a collage
+- Confidence (number): Confidence score for the collage detection
+
 ## CSV Export
 
 Click the "Download CSV" button to export all logs to a CSV file. The export includes:
@@ -60,7 +68,7 @@ Click the "Download CSV" button to export all logs to a CSV file. The export inc
 - Original Image URL
 - Encoded Image URL
 - QA Approved status
-- All API result fields (Thumbnail, Full Screen, Story, Width, Height, Laplacian Variance, Total Pixels)
+- All API result fields (Thumbnail, Full Screen, Story, Width, Height, Laplacian Variance, Total Pixels, Collage, Confidence)
 - **Story Average** (calculated from QA-approved entries only) - shown in the bottom row
 
 The CSV file is named with the current date: `img-audit-logs-YYYY-MM-DD.csv`
@@ -93,4 +101,8 @@ ImgAuditExtension/
 
 ## Version
 
-1.0.0
+1.1.0
+
+## Changelog
+
+### v1.1.0
