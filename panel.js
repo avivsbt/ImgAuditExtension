@@ -39,7 +39,7 @@ const CSV_HEADERS = [
   'Page URL',
   'Original Image URL',
   'Encoded Image URL',
-  'QA Approved',
+  'API Detection Correct',
   ...API_RESULT_FIELDS.QUALITY,
   ...API_RESULT_FIELDS.METRICS,
   ...API_RESULT_FIELDS.COLLAGE
@@ -155,13 +155,13 @@ function clearLogs() {
 function getDefaultApiResults() {
   const results = {};
   API_RESULT_FIELDS.QUALITY.forEach(field => {
-    results[field] = 'N/A';
+    results[field] = '-';
   });
   API_RESULT_FIELDS.METRICS.forEach(field => {
-    results[field] = 'N/A';
+    results[field] = '-';
   });
   API_RESULT_FIELDS.COLLAGE.forEach(field => {
-    results[field] = 'N/A';
+    results[field] = '-';
   });
   return results;
 }
@@ -182,7 +182,8 @@ function addLogEntry(logData, saveToStorage = true) {
     originalUrl: logData.originalUrl || '',
     encoded: logData.encoded || '',
     apiResults: logData.apiResults || getDefaultApiResults(),
-    qaApproved: logData.qaApproved || false
+    qaApproved: logData.qaApproved || false,
+    collageApproved: logData.collageApproved !== undefined ? logData.collageApproved : true
   };
   
   // Save to localStorage if this is a new entry
@@ -210,7 +211,7 @@ function renderLogEntry(logData, saveToStorage = false) {
   
   // Check if API results already exist and are loaded
   const hasApiResults = logData.apiResults && logData.apiResults !== null;
-  const apiResultsHtml = hasApiResults ? renderApiResults(logData.apiResults) : '<span>Loading...</span>';
+  const apiResultsHtml = hasApiResults ? renderApiResults(logData.apiResults) : '<div class="loading-spinner-container"><div class="loading-spinner"></div></div>';
   
   // Helper function to create URL with thumbnail
   const createUrlWithThumbnail = (url, label) => {
@@ -220,53 +221,84 @@ function renderLogEntry(logData, saveToStorage = false) {
       return `
         <div class="label" style="margin-top: 12px;">${label}:</div>
         <div class="value value-with-thumbnail">
-          <div class="url-text">${escapedUrl}</div>
+          <div class="url-text"><a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">${escapedUrl}</a></div>
           <a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">
             <img src="${escapedUrl}" alt="Thumbnail" class="thumbnail" onerror="this.style.display='none'" />
           </a>
         </div>
       `;
     } else {
+      // Even if not a valid image URL, make it a link if it's a valid URL
+      const escapedUrl = escapeHtml(url || 'N/A');
+      const isLinkable = url && (url.startsWith('http://') || url.startsWith('https://'));
       return `
         <div class="label" style="margin-top: 12px;">${label}:</div>
-        <div class="value">${escapeHtml(url || 'N/A')}</div>
+        <div class="value">${isLinkable ? `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">${escapedUrl}</a>` : escapedUrl}</div>
       `;
     }
+  };
+  
+  // Helper function to create clickable URL
+  const createClickableUrl = (url) => {
+    if (!url) return 'N/A';
+    const escapedUrl = escapeHtml(url);
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">${escapedUrl}</a>`;
+    }
+    return escapedUrl;
   };
   
   // Initial HTML
   logEntry.innerHTML = `
     <div class="timestamp">${timestamp}</div>
     <div class="label">Page URL:</div>
-    <div class="value">${escapeHtml(logData.pageUrl)}</div>
+    <div class="value">${createClickableUrl(logData.pageUrl)}</div>
     ${createUrlWithThumbnail(logData.originalUrl, 'Original Image URL')}
     ${createUrlWithThumbnail(logData.encoded, 'Encoded Image URL')}
-    <div class="label" style="margin-top: 12px;">API Results:</div>
-    <div class="value" id="api-results-${logData.id}">${apiResultsHtml}</div>
-    <div class="qa-checkbox-container">
+    <div class="qa-checkbox-container" style="margin-top: 12px; margin-bottom: 8px;">
       <label>
-        <input type="checkbox" id="qa-checkbox-${logData.id}" ${logData.qaApproved ? 'checked' : ''} />
-        QA Approved
+        <input type="checkbox" id="collage-checkbox-${logData.id}" ${logData.collageApproved ? 'checked' : ''} />
+        API Detection Correct
       </label>
     </div>
+    <div class="label" style="margin-top: 12px;">API Results:</div>
+    <div class="value" id="api-results-${logData.id}">${apiResultsHtml}</div>
   `;
   
   logsContainer.insertBefore(logEntry, logsContainer.firstChild);
   
+  // Scroll to top to show the new entry
+  setTimeout(() => {
+    logsContainer.scrollTop = 0;
+  }, 0);
+  
   // Add checkbox change listener
-  const checkbox = document.getElementById(`qa-checkbox-${logData.id}`);
-  if (checkbox) {
-    checkbox.addEventListener('change', function() {
-      updateQaStatus(logData.id, checkbox.checked);
+  const collageCheckbox = document.getElementById(`collage-checkbox-${logData.id}`);
+  if (collageCheckbox) {
+    collageCheckbox.addEventListener('change', function() {
+      updateCollageStatus(logData.id, collageCheckbox.checked);
     });
   }
   
-  // Make API calls if we have a valid original URL and results are still default (N/A)
-  const hasDefaultResults = logData.apiResults && 
-    typeof logData.apiResults === 'object' &&
-    (logData.apiResults[API_RESULT_FIELDS.QUALITY[0]] === 'N/A' || 
-     logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A' ||
-     logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === 'N/A');
+  // Setup collapsible sections if API results are already loaded
+  if (hasApiResults) {
+    setTimeout(() => {
+      const resultsDiv = document.getElementById(`api-results-${logData.id}`);
+      if (resultsDiv) {
+        setupCollapsibleSections(resultsDiv);
+      }
+    }, 0);
+  }
+  
+  // Make API calls if we have a valid original URL and results are still default (-)
+  const hasDefaultResults = !logData.apiResults || 
+    (logData.apiResults && typeof logData.apiResults === 'object' &&
+     (logData.apiResults[API_RESULT_FIELDS.QUALITY[0]] === '-' || 
+      logData.apiResults[API_RESULT_FIELDS.QUALITY[0]] === 'N/A' ||
+      logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === '-' ||
+      logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A' ||
+      logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === '-' ||
+      logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === 'N/A'));
   
   if (hasDefaultResults && isValidImageUrl(logData.originalUrl)) {
     fetchApiResults(logData.originalUrl, `api-results-${logData.id}`, logData.id);
@@ -283,6 +315,15 @@ function updateQaStatus(logId, qaApproved) {
   const logIndex = storedLogs.findIndex(log => log.id === logId);
   if (logIndex !== -1) {
     storedLogs[logIndex].qaApproved = qaApproved;
+    saveLogsToStorage(storedLogs);
+  }
+}
+
+function updateCollageStatus(logId, collageApproved) {
+  const storedLogs = getStoredLogs();
+  const logIndex = storedLogs.findIndex(log => log.id === logId);
+  if (logIndex !== -1) {
+    storedLogs[logIndex].collageApproved = collageApproved;
     saveLogsToStorage(storedLogs);
   }
 }
@@ -388,9 +429,6 @@ function exportToCSV() {
   // Build CSV rows
   const rows = [CSV_HEADERS.map(escapeCsvField).join(',')];
   
-  // Collect Story values from QA-approved logs for average calculation
-  const qaApprovedStoryValues = [];
-  
   storedLogs.forEach(function(log) {
     const timestamp = formatTimestamp(log.timestamp);
     
@@ -401,22 +439,12 @@ function exportToCSV() {
       apiResults = getDefaultApiResults();
     }
     
-    // Collect Story value if QA approved
-    if (log.qaApproved) {
-      const storyValue = apiResults['Story'] || 'N/A';
-      // Try to parse as number, skip if N/A or invalid
-      const storyNum = parseFloat(storyValue);
-      if (!isNaN(storyNum)) {
-        qaApprovedStoryValues.push(storyNum);
-      }
-    }
-    
     const row = [
       escapeCsvField(timestamp),
       escapeCsvField(log.pageUrl || ''),
       escapeCsvField(log.originalUrl || ''),
       escapeCsvField(log.encoded || ''),
-      escapeCsvField(log.qaApproved ? 'Yes' : 'No'),
+      escapeCsvField(log.collageApproved ? 'Yes' : 'No'),
       escapeCsvField(apiResults['Thumbnail'] || 'N/A'),
       escapeCsvField(apiResults['Full Screen'] || 'N/A'),
       escapeCsvField(apiResults['Story'] || 'N/A'),
@@ -430,32 +458,6 @@ function exportToCSV() {
     
     rows.push(row.join(','));
   });
-  
-  // Calculate average Story value for QA-approved entries
-  let storyAverage = 'N/A';
-  if (qaApprovedStoryValues.length > 0) {
-    const sum = qaApprovedStoryValues.reduce((a, b) => a + b, 0);
-    storyAverage = (sum / qaApprovedStoryValues.length).toFixed(CONFIG.CSV.DECIMAL_PRECISION);
-  }
-  
-  // Add summary row at the bottom
-  const summaryRow = [
-    '',
-    '',
-    '',
-    '',
-    'Story Average (QA Approved)',
-    '',
-    '',
-    escapeCsvField(storyAverage),
-    '',
-    '',
-    '',
-    '',
-    '',
-    ''
-  ];
-  rows.push(summaryRow.join(','));
   
   // Create CSV content
   const csvContent = rows.join('\n');
@@ -487,45 +489,118 @@ function renderApiResults(apiResults) {
     return '<span style="color: #999;">No API results available</span>';
   }
   
-  let html = '';
+  // Generate unique ID for this results table
+  const tableId = `api-results-table-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
-  // Quality Analysis section
-  html += `
-    <div style="margin-bottom: 12px;">
-      <div class="label" style="font-size: 11px; color: #4285f4;">Quality Analysis:</div>
-      <div style="margin-left: 8px; margin-top: 4px;">
-        <div><strong>Thumbnail:</strong> ${apiResults['Thumbnail'] || 'N/A'}</div>
-        <div><strong>Full Screen:</strong> ${apiResults['Full Screen'] || 'N/A'}</div>
-        <div><strong>Story:</strong> ${apiResults['Story'] || 'N/A'}</div>
-      </div>
-    </div>
-  `;
-  
-  // Image Metrics section
-  html += `
-    <div style="margin-bottom: 12px;">
-      <div class="label" style="font-size: 11px; color: #4285f4;">Image Metrics:</div>
-      <div style="margin-left: 8px; margin-top: 4px;">
-        <div><strong>Width:</strong> ${apiResults['Width'] || 'N/A'}</div>
-        <div><strong>Height:</strong> ${apiResults['Height'] || 'N/A'}</div>
-        <div><strong>Laplacian Variance:</strong> ${apiResults['Laplacian Variance'] || 'N/A'}</div>
-        <div><strong>Total Pixels:</strong> ${apiResults['Total Pixels'] || 'N/A'}</div>
-      </div>
-    </div>
-  `;
-  
-  // Collage Analysis section
-  html += `
-    <div>
-      <div class="label" style="font-size: 11px; color: #4285f4;">Collage Analysis:</div>
-      <div style="margin-left: 8px; margin-top: 4px;">
-        <div><strong>Collage:</strong> ${apiResults['Collage'] !== undefined ? (apiResults['Collage'] ? 'Yes' : 'No') : 'N/A'}</div>
-        <div><strong>Confidence:</strong> ${apiResults['Confidence'] !== undefined ? apiResults['Confidence'] : 'N/A'}</div>
-      </div>
-    </div>
+  // Create table with all API results
+  const html = `
+    <table class="api-results-table" id="${tableId}">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Metric</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="category-header" data-category="collage" data-expanded="true">
+          <td colspan="3">
+            <span class="collapse-icon">▼</span>
+            <strong>Collage Analysis</strong>
+          </td>
+        </tr>
+        <tr class="category-content" data-category="collage">
+          <td></td>
+          <td>Collage</td>
+          <td>${apiResults['Collage'] !== undefined && apiResults['Collage'] !== '-' && apiResults['Collage'] !== 'N/A' ? (apiResults['Collage'] === true || apiResults['Collage'] === 'true' || String(apiResults['Collage']).toLowerCase() === 'true' ? 'Yes' : 'No') : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="collage">
+          <td></td>
+          <td>Confidence</td>
+          <td>${apiResults['Confidence'] !== undefined && apiResults['Confidence'] !== '-' && apiResults['Confidence'] !== 'N/A' ? apiResults['Confidence'] : '-'}</td>
+        </tr>
+        <tr class="category-header" data-category="quality" data-expanded="false">
+          <td colspan="3">
+            <span class="collapse-icon">▶</span>
+            <strong>Quality Analysis</strong>
+          </td>
+        </tr>
+        <tr class="category-content" data-category="quality" style="display: none;">
+          <td></td>
+          <td>Thumbnail</td>
+          <td>${apiResults['Thumbnail'] && apiResults['Thumbnail'] !== '-' && apiResults['Thumbnail'] !== 'N/A' ? apiResults['Thumbnail'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="quality" style="display: none;">
+          <td></td>
+          <td>Full Screen</td>
+          <td>${apiResults['Full Screen'] && apiResults['Full Screen'] !== '-' && apiResults['Full Screen'] !== 'N/A' ? apiResults['Full Screen'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="quality" style="display: none;">
+          <td></td>
+          <td>Story</td>
+          <td>${apiResults['Story'] && apiResults['Story'] !== '-' && apiResults['Story'] !== 'N/A' ? apiResults['Story'] : '-'}</td>
+        </tr>
+        <tr class="category-header" data-category="metrics" data-expanded="false">
+          <td colspan="3">
+            <span class="collapse-icon">▶</span>
+            <strong>Image Metrics</strong>
+          </td>
+        </tr>
+        <tr class="category-content" data-category="metrics" style="display: none;">
+          <td></td>
+          <td>Width</td>
+          <td>${apiResults['Width'] && apiResults['Width'] !== '-' && apiResults['Width'] !== 'N/A' ? apiResults['Width'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="metrics" style="display: none;">
+          <td></td>
+          <td>Height</td>
+          <td>${apiResults['Height'] && apiResults['Height'] !== '-' && apiResults['Height'] !== 'N/A' ? apiResults['Height'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="metrics" style="display: none;">
+          <td></td>
+          <td>Laplacian Variance</td>
+          <td>${apiResults['Laplacian Variance'] && apiResults['Laplacian Variance'] !== '-' && apiResults['Laplacian Variance'] !== 'N/A' ? apiResults['Laplacian Variance'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="metrics" style="display: none;">
+          <td></td>
+          <td>Total Pixels</td>
+          <td>${apiResults['Total Pixels'] && apiResults['Total Pixels'] !== '-' && apiResults['Total Pixels'] !== 'N/A' ? apiResults['Total Pixels'] : '-'}</td>
+        </tr>
+      </tbody>
+    </table>
   `;
   
   return html;
+}
+
+function setupCollapsibleSections(resultsDiv) {
+  if (!resultsDiv) return;
+  
+  const table = resultsDiv.querySelector('.api-results-table');
+  if (!table) return;
+  
+  const headers = table.querySelectorAll('.category-header');
+  headers.forEach(header => {
+    header.style.cursor = 'pointer';
+    header.addEventListener('click', function() {
+      const category = this.getAttribute('data-category');
+      const isExpanded = this.getAttribute('data-expanded') === 'true';
+      const icon = this.querySelector('.collapse-icon');
+      const contentRows = table.querySelectorAll('.category-content[data-category="' + category + '"]');
+      
+      if (isExpanded) {
+        // Collapse
+        this.setAttribute('data-expanded', 'false');
+        if (icon) icon.textContent = '▶';
+        contentRows.forEach(row => row.style.display = 'none');
+      } else {
+        // Expand
+        this.setAttribute('data-expanded', 'true');
+        if (icon) icon.textContent = '▼';
+        contentRows.forEach(row => row.style.display = '');
+      }
+    });
+  });
 }
 
 // ============================================================================
@@ -682,6 +757,7 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     resultsDiv = getResultsDiv();
     if (resultsDiv) {
       resultsDiv.innerHTML = renderApiResults(apiResults);
+      setupCollapsibleSections(resultsDiv);
     } else {
       console.warn(`Results div not found when trying to render: ${resultsId}`);
     }
@@ -706,6 +782,7 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     resultsDiv = getResultsDiv();
     if (resultsDiv) {
       resultsDiv.innerHTML = renderApiResults(apiResults);
+      setupCollapsibleSections(resultsDiv);
     } else {
       console.warn(`Results div not found when trying to render error: ${resultsId}`);
     }
