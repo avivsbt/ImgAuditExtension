@@ -10,7 +10,7 @@ const CONFIG = {
   API_ENDPOINTS: {
     QUALITY: '/api/images/analyze-quality',
     METRICS: '/api/images/metrics',
-    COLLAGE: '/api/images/collage/analyze'
+    COLLAGE: '/api/images/analyze/collage'
   },
   SELECTORS: {
     SWIPER: '[data-testid="swiper"]',
