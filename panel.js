@@ -8,7 +8,7 @@ const CONFIG = {
   MIN_SWIPE_DISTANCE: 50, // pixels
   API_BASE_URL: 'http://content-enricher.taboolasyndication.com:8400',
   API_ENDPOINTS: {
-    QUALITY: '/api/images/analyze-quality',
+    QUALITY: '/api/images/analyze/quality',
     METRICS: '/api/images/metrics',
     COLLAGE: '/api/images/analyze/collage'
   },
@@ -519,49 +519,49 @@ function renderApiResults(apiResults) {
           <td>Confidence</td>
           <td>${apiResults['Confidence'] !== undefined && apiResults['Confidence'] !== '-' && apiResults['Confidence'] !== 'N/A' ? apiResults['Confidence'] : '-'}</td>
         </tr>
-        <tr class="category-header" data-category="quality" data-expanded="false">
+        <tr class="category-header" data-category="quality" data-expanded="true">
           <td colspan="3">
-            <span class="collapse-icon">▶</span>
+            <span class="collapse-icon">▼</span>
             <strong>Quality Analysis</strong>
           </td>
         </tr>
-        <tr class="category-content" data-category="quality" style="display: none;">
+        <tr class="category-content" data-category="quality">
           <td></td>
           <td>Thumbnail</td>
           <td>${apiResults['Thumbnail'] && apiResults['Thumbnail'] !== '-' && apiResults['Thumbnail'] !== 'N/A' ? apiResults['Thumbnail'] : '-'}</td>
         </tr>
-        <tr class="category-content" data-category="quality" style="display: none;">
+        <tr class="category-content" data-category="quality">
           <td></td>
           <td>Full Screen</td>
           <td>${apiResults['Full Screen'] && apiResults['Full Screen'] !== '-' && apiResults['Full Screen'] !== 'N/A' ? apiResults['Full Screen'] : '-'}</td>
         </tr>
-        <tr class="category-content" data-category="quality" style="display: none;">
+        <tr class="category-content" data-category="quality">
           <td></td>
           <td>Story</td>
           <td>${apiResults['Story'] && apiResults['Story'] !== '-' && apiResults['Story'] !== 'N/A' ? apiResults['Story'] : '-'}</td>
         </tr>
-        <tr class="category-header" data-category="metrics" data-expanded="false">
+        <tr class="category-header" data-category="metrics" data-expanded="true">
           <td colspan="3">
-            <span class="collapse-icon">▶</span>
+            <span class="collapse-icon">▼</span>
             <strong>Image Metrics</strong>
           </td>
         </tr>
-        <tr class="category-content" data-category="metrics" style="display: none;">
+        <tr class="category-content" data-category="metrics">
           <td></td>
           <td>Width</td>
           <td>${apiResults['Width'] && apiResults['Width'] !== '-' && apiResults['Width'] !== 'N/A' ? apiResults['Width'] : '-'}</td>
         </tr>
-        <tr class="category-content" data-category="metrics" style="display: none;">
+        <tr class="category-content" data-category="metrics">
           <td></td>
           <td>Height</td>
           <td>${apiResults['Height'] && apiResults['Height'] !== '-' && apiResults['Height'] !== 'N/A' ? apiResults['Height'] : '-'}</td>
         </tr>
-        <tr class="category-content" data-category="metrics" style="display: none;">
+        <tr class="category-content" data-category="metrics">
           <td></td>
           <td>Laplacian Variance</td>
           <td>${apiResults['Laplacian Variance'] && apiResults['Laplacian Variance'] !== '-' && apiResults['Laplacian Variance'] !== 'N/A' ? apiResults['Laplacian Variance'] : '-'}</td>
         </tr>
-        <tr class="category-content" data-category="metrics" style="display: none;">
+        <tr class="category-content" data-category="metrics">
           <td></td>
           <td>Total Pixels</td>
           <td>${apiResults['Total Pixels'] && apiResults['Total Pixels'] !== '-' && apiResults['Total Pixels'] !== 'N/A' ? apiResults['Total Pixels'] : '-'}</td>

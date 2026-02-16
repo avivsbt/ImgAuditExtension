@@ -38,9 +38,9 @@ A Chrome DevTools extension for image auditing that captures image data, analyze
 
 The extension calls the following APIs for image analysis:
 
-- `http://content-enricher.taboolasyndication.com:8400/api/images/analyze-quality?url={imageUrl}`
+- `http://content-enricher.taboolasyndication.com:8400/api/images/analyze/quality?url={imageUrl}`
 - `http://content-enricher.taboolasyndication.com:8400/api/images/metrics?url={imageUrl}`
-- `http://content-enricher.taboolasyndication.com:8400/api/images/collage/analyze?url={imageUrl}`
+- `http://content-enricher.taboolasyndication.com:8400/api/images/analyze/collage?url={imageUrl}`
 
 ### API Response Format
 
