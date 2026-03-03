@@ -10,7 +10,8 @@ const CONFIG = {
   API_ENDPOINTS: {
     QUALITY: '/api/images/analyze/quality',
     METRICS: '/api/images/metrics',
-    COLLAGE: '/api/images/analyze/collage'
+    COLLAGE: '/api/images/analyze/collage',
+    TEXT: '/api/images/analyze/text'
   },
   SELECTORS: {
     SWIPER: '[data-testid="swiper"]',
@@ -31,7 +32,8 @@ const CONFIG = {
 const API_RESULT_FIELDS = {
   QUALITY: ['Thumbnail', 'Full Screen', 'Story'],
   METRICS: ['Width', 'Height', 'Laplacian Variance', 'Total Pixels'],
-  COLLAGE: ['Collage', 'Confidence']
+  COLLAGE: ['Collage', 'Confidence'],
+  TEXT: ['Text', 'Text Score', 'Threshold', 'Processing Time (ms)']
 };
 
 const CSV_HEADERS = [
@@ -42,7 +44,8 @@ const CSV_HEADERS = [
   'API Detection Correct',
   ...API_RESULT_FIELDS.QUALITY,
   ...API_RESULT_FIELDS.METRICS,
-  ...API_RESULT_FIELDS.COLLAGE
+  ...API_RESULT_FIELDS.COLLAGE,
+  ...API_RESULT_FIELDS.TEXT
 ];
 
 // ============================================================================
@@ -163,6 +166,9 @@ function getDefaultApiResults() {
   API_RESULT_FIELDS.COLLAGE.forEach(field => {
     results[field] = '-';
   });
+  API_RESULT_FIELDS.TEXT.forEach(field => {
+    results[field] = '-';
+  });
   return results;
 }
 
@@ -183,7 +189,7 @@ function addLogEntry(logData, saveToStorage = true) {
     encoded: logData.encoded || '',
     apiResults: logData.apiResults || getDefaultApiResults(),
     qaApproved: logData.qaApproved || false,
-    collageApproved: logData.collageApproved !== undefined ? logData.collageApproved : true
+    textApproved: logData.textApproved !== undefined ? logData.textApproved : true
   };
   
   // Save to localStorage if this is a new entry
@@ -257,7 +263,7 @@ function renderLogEntry(logData, saveToStorage = false) {
     ${createUrlWithThumbnail(logData.encoded, 'Encoded Image URL')}
     <div class="qa-checkbox-container" style="margin-top: 12px; margin-bottom: 8px;">
       <label>
-        <input type="checkbox" id="collage-checkbox-${logData.id}" ${logData.collageApproved ? 'checked' : ''} />
+        <input type="checkbox" id="text-checkbox-${logData.id}" ${logData.textApproved ? 'checked' : ''} />
         API Detection Correct
       </label>
     </div>
@@ -273,10 +279,10 @@ function renderLogEntry(logData, saveToStorage = false) {
   }, 0);
   
   // Add checkbox change listener
-  const collageCheckbox = document.getElementById(`collage-checkbox-${logData.id}`);
-  if (collageCheckbox) {
-    collageCheckbox.addEventListener('change', function() {
-      updateCollageStatus(logData.id, collageCheckbox.checked);
+  const textCheckbox = document.getElementById(`text-checkbox-${logData.id}`);
+  if (textCheckbox) {
+    textCheckbox.addEventListener('change', function() {
+      updateTextStatus(logData.id, textCheckbox.checked);
     });
   }
   
@@ -298,7 +304,9 @@ function renderLogEntry(logData, saveToStorage = false) {
       logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === '-' ||
       logData.apiResults[API_RESULT_FIELDS.METRICS[0]] === 'N/A' ||
       logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === '-' ||
-      logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === 'N/A'));
+      logData.apiResults[API_RESULT_FIELDS.COLLAGE[0]] === 'N/A' ||
+      logData.apiResults[API_RESULT_FIELDS.TEXT[0]] === '-' ||
+      logData.apiResults[API_RESULT_FIELDS.TEXT[0]] === 'N/A'));
   
   if (hasDefaultResults && isValidImageUrl(logData.originalUrl)) {
     fetchApiResults(logData.originalUrl, `api-results-${logData.id}`, logData.id);
@@ -319,11 +327,11 @@ function updateQaStatus(logId, qaApproved) {
   }
 }
 
-function updateCollageStatus(logId, collageApproved) {
+function updateTextStatus(logId, textApproved) {
   const storedLogs = getStoredLogs();
   const logIndex = storedLogs.findIndex(log => log.id === logId);
   if (logIndex !== -1) {
-    storedLogs[logIndex].collageApproved = collageApproved;
+    storedLogs[logIndex].textApproved = textApproved;
     saveLogsToStorage(storedLogs);
   }
 }
@@ -444,7 +452,7 @@ function exportToCSV() {
       escapeCsvField(log.pageUrl || ''),
       escapeCsvField(log.originalUrl || ''),
       escapeCsvField(log.encoded || ''),
-      escapeCsvField(log.collageApproved ? 'Yes' : 'No'),
+      escapeCsvField(log.textApproved ? 'Yes' : 'No'),
       escapeCsvField(apiResults['Thumbnail'] || 'N/A'),
       escapeCsvField(apiResults['Full Screen'] || 'N/A'),
       escapeCsvField(apiResults['Story'] || 'N/A'),
@@ -453,7 +461,11 @@ function exportToCSV() {
       escapeCsvField(apiResults['Laplacian Variance'] || 'N/A'),
       escapeCsvField(apiResults['Total Pixels'] || 'N/A'),
       escapeCsvField(apiResults['Collage'] !== undefined ? (apiResults['Collage'] ? 'Yes' : 'No') : 'N/A'),
-      escapeCsvField(apiResults['Confidence'] !== undefined ? apiResults['Confidence'] : 'N/A')
+      escapeCsvField(apiResults['Confidence'] !== undefined ? apiResults['Confidence'] : 'N/A'),
+      escapeCsvField(apiResults['Text'] !== undefined ? (apiResults['Text'] ? 'Yes' : 'No') : 'N/A'),
+      escapeCsvField(apiResults['Text Score'] !== undefined ? apiResults['Text Score'] : 'N/A'),
+      escapeCsvField(apiResults['Threshold'] !== undefined ? apiResults['Threshold'] : 'N/A'),
+      escapeCsvField(apiResults['Processing Time (ms)'] !== undefined ? apiResults['Processing Time (ms)'] : 'N/A')
     ];
     
     rows.push(row.join(','));
@@ -503,7 +515,33 @@ function renderApiResults(apiResults) {
         </tr>
       </thead>
       <tbody>
-        <tr class="category-header" data-category="collage" data-expanded="true">
+        <tr class="category-header" data-category="text" data-expanded="true">
+          <td colspan="3">
+            <span class="collapse-icon">▼</span>
+            <strong>Text Analysis</strong>
+          </td>
+        </tr>
+        <tr class="category-content" data-category="text">
+          <td></td>
+          <td>Text</td>
+          <td>${apiResults['Text'] !== undefined && apiResults['Text'] !== '-' && apiResults['Text'] !== 'N/A' ? (apiResults['Text'] === true || apiResults['Text'] === 'true' || String(apiResults['Text']).toLowerCase() === 'true' ? 'Yes' : 'No') : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="text">
+          <td></td>
+          <td>Text Score</td>
+          <td>${apiResults['Text Score'] !== undefined && apiResults['Text Score'] !== '-' && apiResults['Text Score'] !== 'N/A' ? apiResults['Text Score'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="text">
+          <td></td>
+          <td>Threshold</td>
+          <td>${apiResults['Threshold'] !== undefined && apiResults['Threshold'] !== '-' && apiResults['Threshold'] !== 'N/A' ? apiResults['Threshold'] : '-'}</td>
+        </tr>
+        <tr class="category-content" data-category="text">
+          <td></td>
+          <td>Processing Time (ms)</td>
+          <td>${apiResults['Processing Time (ms)'] !== undefined && apiResults['Processing Time (ms)'] !== '-' && apiResults['Processing Time (ms)'] !== 'N/A' ? apiResults['Processing Time (ms)'] : '-'}</td>
+        </tr>
+        <tr class="category-header" data-category="collage" data-expanded="false">
           <td colspan="3">
             <span class="collapse-icon">▼</span>
             <strong>Collage Analysis</strong>
@@ -519,7 +557,7 @@ function renderApiResults(apiResults) {
           <td>Confidence</td>
           <td>${apiResults['Confidence'] !== undefined && apiResults['Confidence'] !== '-' && apiResults['Confidence'] !== 'N/A' ? apiResults['Confidence'] : '-'}</td>
         </tr>
-        <tr class="category-header" data-category="quality" data-expanded="true">
+        <tr class="category-header" data-category="quality" data-expanded="false">
           <td colspan="3">
             <span class="collapse-icon">▼</span>
             <strong>Quality Analysis</strong>
@@ -540,7 +578,7 @@ function renderApiResults(apiResults) {
           <td>Story</td>
           <td>${apiResults['Story'] && apiResults['Story'] !== '-' && apiResults['Story'] !== 'N/A' ? apiResults['Story'] : '-'}</td>
         </tr>
-        <tr class="category-header" data-category="metrics" data-expanded="true">
+        <tr class="category-header" data-category="metrics" data-expanded="false">
           <td colspan="3">
             <span class="collapse-icon">▼</span>
             <strong>Image Metrics</strong>
@@ -582,6 +620,13 @@ function setupCollapsibleSections(resultsDiv) {
   const headers = table.querySelectorAll('.category-header');
   headers.forEach(header => {
     header.style.cursor = 'pointer';
+    const category = header.getAttribute('data-category');
+    const isExpanded = header.getAttribute('data-expanded') === 'true';
+    const icon = header.querySelector('.collapse-icon');
+    const contentRows = table.querySelectorAll('.category-content[data-category="' + category + '"]');
+    // Set initial state: only expanded section shows content
+    if (icon) icon.textContent = isExpanded ? '▼' : '▶';
+    contentRows.forEach(row => { row.style.display = isExpanded ? '' : 'none'; });
     header.addEventListener('click', function() {
       const category = this.getAttribute('data-category');
       const isExpanded = this.getAttribute('data-expanded') === 'true';
@@ -622,7 +667,12 @@ const JSON_FIELD_MAPPING = {
   'totalPixels': 'Total Pixels',
   // Collage fields (JSON -> Display)
   'collage': 'Collage',
-  'confidence': 'Confidence'
+  'confidence': 'Confidence',
+  // Text API fields (JSON -> Display): detected, score, threshold, processingTimeMs
+  'detected': 'Text',
+  'score': 'Text Score',
+  'threshold': 'Threshold',
+  'processingTimeMs': 'Processing Time (ms)'
 };
 
 function parseJsonResponse(jsonString) {
@@ -639,8 +689,8 @@ function mapJsonToDisplayFormat(jsonData) {
   Object.keys(JSON_FIELD_MAPPING).forEach(jsonKey => {
     const displayKey = JSON_FIELD_MAPPING[jsonKey];
     if (jsonData[jsonKey] !== undefined) {
-      // Handle boolean values for collage
-      if (jsonKey === 'collage' && typeof jsonData[jsonKey] === 'boolean') {
+      // Handle boolean values for text (detected) and collage
+      if ((jsonKey === 'detected' || jsonKey === 'collage') && typeof jsonData[jsonKey] === 'boolean') {
         mapped[displayKey] = jsonData[jsonKey];
       } else {
         mapped[displayKey] = jsonData[jsonKey];
@@ -669,10 +719,11 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
   
   try {
     // Call all APIs
-    const [qualityResponse, metricsResponse, collageResponse] = await Promise.all([
+    const [qualityResponse, metricsResponse, collageResponse, textResponse] = await Promise.all([
       fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.QUALITY}?url=${encodedUrl}`),
       fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.METRICS}?url=${encodedUrl}`),
-      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.COLLAGE}?url=${encodedUrl}`)
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.COLLAGE}?url=${encodedUrl}`),
+      fetch(`${CONFIG.API_BASE_URL}${CONFIG.API_ENDPOINTS.TEXT}?url=${encodedUrl}`)
     ]);
     
     // Parse quality response (JSON)
@@ -729,27 +780,49 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     
     // Parse collage response (JSON)
     if (collageResponse.ok) {
-      const collageText = await collageResponse.text();
-      const collageJson = parseJsonResponse(collageText);
-      
+      const collageBody = await collageResponse.text();
+      const collageJson = parseJsonResponse(collageBody);
       if (collageJson) {
         const mappedCollage = mapJsonToDisplayFormat(collageJson);
-        // Update all collage fields
         API_RESULT_FIELDS.COLLAGE.forEach(field => {
           if (mappedCollage[field] !== undefined) {
             apiResults[field] = mappedCollage[field];
           }
         });
       } else {
-        // Set error for all collage fields if parsing failed
         API_RESULT_FIELDS.COLLAGE.forEach(field => {
           apiResults[field] = `Error: Failed to parse response`;
         });
       }
     } else {
-      // Set error for all collage fields
       API_RESULT_FIELDS.COLLAGE.forEach(field => {
         apiResults[field] = `Error: ${collageResponse.status}`;
+      });
+    }
+    
+    // Parse text response (JSON): { detected, score, threshold, processingTimeMs }
+    if (textResponse.ok) {
+      const textResponseBody = await textResponse.text();
+      const textJson = parseJsonResponse(textResponseBody);
+      
+      if (textJson) {
+        const mappedText = mapJsonToDisplayFormat(textJson);
+        // Update all text fields
+        API_RESULT_FIELDS.TEXT.forEach(field => {
+          if (mappedText[field] !== undefined) {
+            apiResults[field] = mappedText[field];
+          }
+        });
+      } else {
+        // Set error for all text fields if parsing failed
+        API_RESULT_FIELDS.TEXT.forEach(field => {
+          apiResults[field] = `Error: Failed to parse response`;
+        });
+      }
+    } else {
+      // Set error for all text fields
+      API_RESULT_FIELDS.TEXT.forEach(field => {
+        apiResults[field] = `Error: ${textResponse.status}`;
       });
     }
     
@@ -774,7 +847,7 @@ async function fetchApiResults(originalUrl, resultsId, logId) {
     
   } catch (error) {
     // Update error in results object for all fields
-    [...API_RESULT_FIELDS.QUALITY, ...API_RESULT_FIELDS.METRICS, ...API_RESULT_FIELDS.COLLAGE].forEach(field => {
+    [...API_RESULT_FIELDS.QUALITY, ...API_RESULT_FIELDS.METRICS, ...API_RESULT_FIELDS.COLLAGE, ...API_RESULT_FIELDS.TEXT].forEach(field => {
       apiResults[field] = `Error: ${error.message}`;
     });
     

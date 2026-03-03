@@ -9,6 +9,7 @@ A Chrome DevTools extension for image auditing that captures image data, analyze
 - **Image URL Decoding**: Extracts and decodes Taboola image URLs from active swiper slides
 - **Quality Analysis**: Calls API endpoints to analyze image quality metrics
 - **Collage Detection**: Analyzes images to detect if they are collages with confidence scores
+- **Text Detection**: Analyzes images to detect if they contain text (score, threshold, processing time)
 - **Image Thumbnails**: Displays thumbnail previews next to Original and Encoded Image URLs
 - **Data Persistence**: Stores all logs in localStorage for persistence across sessions
 - **QA Approval**: Track QA approval status for each image
@@ -41,6 +42,7 @@ The extension calls the following APIs for image analysis:
 - `http://content-enricher.taboolasyndication.com:8400/api/images/analyze/quality?url={imageUrl}`
 - `http://content-enricher.taboolasyndication.com:8400/api/images/metrics?url={imageUrl}`
 - `http://content-enricher.taboolasyndication.com:8400/api/images/analyze/collage?url={imageUrl}`
+- `http://content-enricher.taboolasyndication.com:8400/api/images/analyze/text?url={imageUrl}`
 
 ### API Response Format
 
@@ -59,6 +61,12 @@ The extension calls the following APIs for image analysis:
 - Collage (boolean): Indicates if the image is a collage
 - Confidence (number): Confidence score for the collage detection
 
+**Text Analysis:**
+- Text (boolean): From `detected` — indicates if the image contains text
+- Text Score (number): From `score`
+- Threshold (number): Threshold used for detection
+- Processing Time (ms): Processing time in milliseconds
+
 ## CSV Export
 
 Click the "Download CSV" button to export all logs to a CSV file. The export includes:
@@ -68,7 +76,7 @@ Click the "Download CSV" button to export all logs to a CSV file. The export inc
 - Original Image URL
 - Encoded Image URL
 - QA Approved status
-- All API result fields (Thumbnail, Full Screen, Story, Width, Height, Laplacian Variance, Total Pixels, Collage, Confidence)
+- All API result fields (Thumbnail, Full Screen, Story, Width, Height, Laplacian Variance, Total Pixels, Collage, Confidence, Text, Text Score, Threshold, Processing Time (ms))
 - **Story Average** (calculated from QA-approved entries only) - shown in the bottom row
 
 The CSV file is named with the current date: `img-audit-logs-YYYY-MM-DD.csv`
